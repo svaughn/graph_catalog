@@ -329,6 +329,47 @@ def filter_urls_by_sidebar(page_url: str, urls: list[str]) -> list[str]:
     sidebar_links = get_sidebar_links(page_url)
     return [u for u in urls if normalize_url(u) in sidebar_links]
 
+def extract_course_ids_from_program_requirements(prog_req_url: str, course_dict: dict) -> list[str]:
+    """
+    Fetch the Program Requirements page and extract course IDs mentioned on that page.
+    Returns a list of course IDs that exist in the course dictionary.
+    """
+    html = fetch_html(prog_req_url)
+    if not html:
+        return []
+    
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Get all text from the page
+        page_text = soup.get_text()
+        
+        # Extract potential course codes (pattern: DEPT-### or DEPT###)
+        pattern = r'\b([A-Z]{3,4}[-\s]?\d{3}[A-Z]?)\b'
+        matches = re.findall(pattern, page_text.upper())
+        
+        # Normalize and check if they exist in our course dictionary
+        found_courses = []
+        seen = set()  # To avoid duplicates
+        
+        for match in matches:
+            # Normalize: remove spaces and hyphens for comparison
+            normalized = match.replace(' ', '').replace('-', '')
+            
+            # Check if this course exists in our dictionary
+            for course_id in course_dict.keys():
+                normalized_dict_id = course_id.replace(' ', '').replace('-', '').upper()
+                if normalized == normalized_dict_id and course_id not in seen:
+                    found_courses.append(course_id)
+                    seen.add(course_id)
+                    break
+        
+        return found_courses
+    except Exception as e:
+        print(f"        ⚠️  Error extracting courses from {prog_req_url}: {e}")
+        return []
+
+
 if __name__ == "__main__":
     # Accept URL from command line or use default
     if len(sys.argv) > 1:
@@ -384,6 +425,7 @@ if __name__ == "__main__":
                             all_courses_data.append({
                                 "school_url": school_url,
                                 "program_name": nav_link['text'],
+                                "prog_req_link": prog_req_link,
                                 "courses_link": courses_link,
                                 **course
                             })
@@ -443,6 +485,22 @@ if __name__ == "__main__":
         if current_program != course_data["program_name"]:
             current_program = course_data["program_name"]
             print(f"\n  📄 Program: {current_program}")
+            print(f"      Program Requirements URL: {course_data.get('prog_req_link', 'Not found')}")
+
+            # Extract and display Required Courses from Program Requirements page
+            prog_req_link = course_data.get('prog_req_link')
+            if prog_req_link and prog_req_link != 'Not found':
+                required_courses = extract_course_ids_from_program_requirements(
+                    prog_req_link,
+                    course_dictionary
+                )
+        
+                if required_courses:
+                    print(f"\n      📋 Requirement Courses ({len(required_courses)}):")
+                    for course_id in required_courses:
+                        course_title = course_dictionary.get(course_id, "Unknown")
+                        print(f'        • "{course_id}": "{course_title}"')
+
             print(f"      Courses URL: {course_data['courses_link']}")
             print(f"\n      📚 Program Courses:")
             print()
