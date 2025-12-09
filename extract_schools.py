@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.5)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.6)"
 }
 
 def normalize_url(u: str) -> str:
@@ -134,9 +134,26 @@ def find_link(page_url: str, link_text_substring: str) -> str | None:
         print(f"      ⚠️  Error finding '{link_text_substring}' on {page_url}: {e}")
         return None
 
+def remove_parenthetical(text: str) -> str:
+    """
+    Remove parenthetical phrases from text.
+    Handles nested parentheses and cleans up extra whitespace.
+    """
+    # Remove all parenthetical content (including nested parentheses)
+    # This regex handles nested parentheses by matching the outermost pair
+    while '(' in text:
+        # Find and remove the innermost parenthetical first
+        text = re.sub(r'\([^()]*\)', '', text)
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
 def extract_course_titles(courses_url: str) -> list[str]:
     """
     Fetch the courses page and extract all h3 elements with class="maryann_course_title".
+    Removes parenthetical phrases before returning.
     Returns a list of course title strings.
     """
     html = fetch_html(courses_url)
@@ -151,7 +168,10 @@ def extract_course_titles(courses_url: str) -> list[str]:
         for h3 in soup.find_all("h3", class_="maryann_course_title"):
             title = h3.get_text(strip=True)
             if title:
-                course_titles.append(title)
+                # Remove parenthetical phrases
+                cleaned_title = remove_parenthetical(title)
+                if cleaned_title:  # Only add if there's content left after cleaning
+                    course_titles.append(cleaned_title)
         
         return course_titles
     except Exception as e:
