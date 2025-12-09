@@ -3,13 +3,17 @@
 import re
 import sys
 import time
+import pickle
+import os
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.9)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/2.3)"
 }
+
+COURSE_DICT_FILE = "course_dictionary.ser"
 
 def normalize_url(u: str) -> str:
     """Normalize URL for reliable comparison (drop query/fragment, unify trailing slash)."""
@@ -146,10 +150,40 @@ def remove_parenthetical(text: str) -> str:
     
     return text
 
+def save_course_dictionary(course_dict: dict, filename: str = COURSE_DICT_FILE):
+    """
+    Save the course dictionary to a file using pickle serialization.
+    """
+    try:
+        with open(filename, 'wb') as f:
+            pickle.dump(course_dict, f)
+        print(f"✓ Course dictionary saved to {filename}")
+    except Exception as e:
+        print(f"⚠️  Error saving course dictionary: {e}")
+
+def load_course_dictionary(filename: str = COURSE_DICT_FILE) -> dict:
+    """
+    Load the course dictionary from a file if it exists.
+    Returns the loaded dictionary or an empty dict if file doesn't exist.
+    """
+    if os.path.exists(filename):
+        try:
+            with open(filename, 'rb') as f:
+                course_dict = pickle.load(f)
+            print(f"✓ Loaded course dictionary from {filename} ({len(course_dict)} courses)")
+            return course_dict
+        except Exception as e:
+            print(f"⚠️  Error loading course dictionary: {e}")
+            print("   Starting with empty dictionary...")
+            return {}
+    else:
+        print(f"ℹ️  No existing course dictionary found at {filename}")
+        return {}
+
 def parse_prerequisite_courses(prereq_string: str, course_dict: dict) -> list[str]:
     """
     Parse a prerequisite string and extract course IDs that exist in the course dictionary.
-    Returns a list of course IDs that are prerequisites.
+    Returns a list of course IDs that are prerequisites and exist in the dictionary.
     """
     if not prereq_string:
         return []
@@ -317,39 +351,78 @@ if __name__ == "__main__":
     print(f"Discovered {len(YOUR_URLS)} candidate school URLs; {len(filtered)} appear in sidebar\n")
     print("=" * 80)
     
-    # PHASE 1: Build course dictionary
+    # PHASE 1: Build or load course dictionary
     print("\n🔍 PHASE 1: Building course dictionary...\n")
-    course_dictionary = {}  # course_id -> course_title
-    all_courses_data = []  # Store all course data for phase 2
     
-    for school_url in filtered:
-        sidebar_links = get_sidebar_ul_links(school_url)
+    # Try to load existing course dictionary
+    course_dictionary = load_course_dictionary()
+    
+    # If dictionary is empty, build it from scratch
+    if not course_dictionary:
+        print("Building course dictionary from catalog...\n")
+        all_courses_data = []  # Store all course data for phase 2
         
-        if not sidebar_links:
-            continue
-        
-        for nav_link in sidebar_links:
-            prog_req_link = find_link(nav_link['url'], "Program Requirements")
+        for school_url in filtered:
+            sidebar_links = get_sidebar_ul_links(school_url)
             
-            if prog_req_link:
-                courses_link = find_link(nav_link['url'], "Courses")
-                if courses_link:
-                    course_data = extract_course_titles(courses_link)
-                    
-                    for course in course_data:
-                        # Add to dictionary (later entries will overwrite if duplicate)
-                        course_dictionary[course["course_id"]] = course["course_title"]
+            if not sidebar_links:
+                continue
+            
+            for nav_link in sidebar_links:
+                prog_req_link = find_link(nav_link['url'], "Program Requirements")
+                
+                if prog_req_link:
+                    courses_link = find_link(nav_link['url'], "Courses")
+                    if courses_link:
+                        course_data = extract_course_titles(courses_link)
                         
-                        # Store for phase 2 with additional context
-                        all_courses_data.append({
-                            "school_url": school_url,
-                            "program_name": nav_link['text'],
-                            "courses_link": courses_link,
-                            **course
-                        })
+                        for course in course_data:
+                            # Add to dictionary (later entries will overwrite if duplicate)
+                            course_dictionary[course["course_id"]] = course["course_title"]
+                            
+                            # Store for phase 2 with additional context
+                            all_courses_data.append({
+                                "school_url": school_url,
+                                "program_name": nav_link['text'],
+                                "courses_link": courses_link,
+                                **course
+                            })
+        
+        print(f"✓ Built course dictionary with {len(course_dictionary)} unique courses")
+        
+        # Save the course dictionary for future use
+        save_course_dictionary(course_dictionary)
+    else:
+        print("Using loaded course dictionary")
+        
+        # Still need to build all_courses_data for phase 2
+        print("Collecting course data for analysis...\n")
+        all_courses_data = []
+        
+        for school_url in filtered:
+            sidebar_links = get_sidebar_ul_links(school_url)
+            
+            if not sidebar_links:
+                continue
+            
+            for nav_link in sidebar_links:
+                prog_req_link = find_link(nav_link['url'], "Program Requirements")
+                
+                if prog_req_link:
+                    courses_link = find_link(nav_link['url'], "Courses")
+                    if courses_link:
+                        course_data = extract_course_titles(courses_link)
+                        
+                        for course in course_data:
+                            # Store for phase 2 with additional context
+                            all_courses_data.append({
+                                "school_url": school_url,
+                                "program_name": nav_link['text'],
+                                "courses_link": courses_link,
+                                **course
+                            })
     
-    print(f"✓ Built course dictionary with {len(course_dictionary)} unique courses\n")
-    print("=" * 80)
+    print("\n" + "=" * 80)
     
     # PHASE 2: Reprocess and identify prerequisite courses
     print("\n🔍 PHASE 2: Identifying prerequisite relationships...\n")
@@ -374,19 +447,18 @@ if __name__ == "__main__":
         # Display course information
         print(f'    • "{course_data["course_id"]}", "{course_data["course_title"]}"')
         
-        # Parse and display prerequisite courses
+        # Parse and display prerequisite courses (only if found in dictionary)
         if course_data["prerequisites"]:
             prereq_courses = parse_prerequisite_courses(
                 course_data["prerequisites"], 
                 course_dictionary
             )
             
+            # Only display prerequisites if we found valid courses in the dictionary
             if prereq_courses:
                 print(f"      Prerequisites:")
                 for prereq_id in prereq_courses:
                     prereq_title = course_dictionary.get(prereq_id, "Unknown")
                     print(f'        - "{prereq_id}": "{prereq_title}"')
-            else:
-                print(f'      Prerequisites: (raw) "{course_data["prerequisites"]}"')
         
         print()
