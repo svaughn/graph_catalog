@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.7)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.8)"
 }
 
 def normalize_url(u: str) -> str:
@@ -152,8 +152,9 @@ def extract_course_titles(courses_url: str) -> list[dict]:
     """
     Fetch the courses page and extract all h3 elements with class="maryann_course_title".
     Parses each title into course_id and course_title.
+    Also extracts prerequisites if available.
     Removes parenthetical phrases before parsing.
-    Returns a list of dictionaries, each with 'course_id' and 'course_title' keys.
+    Returns a list of dictionaries, each with 'course_id', 'course_title', and 'prerequisites' keys.
     """
     html = fetch_html(courses_url)
     if not html:
@@ -162,30 +163,73 @@ def extract_course_titles(courses_url: str) -> list[dict]:
     try:
         soup = BeautifulSoup(html, "html.parser")
         
-        # Find all h3 elements with class="maryann_course_title"
+        # Find all li elements that contain course information
         course_data = []
+        
+        # Find all h3 elements with class="maryann_course_title"
         for h3 in soup.find_all("h3", class_="maryann_course_title"):
             title = h3.get_text(strip=True)
-            if title:
-                # Remove parenthetical phrases first
-                cleaned_title = remove_parenthetical(title)
+            if not title:
+                continue
+            
+            # Remove parenthetical phrases first
+            cleaned_title = remove_parenthetical(title)
+            
+            if not cleaned_title:
+                continue
+            
+            # Split into course_id (first token) and course_title (rest)
+            parts = cleaned_title.split(" ", 1)
+            course_id = ""
+            course_title = ""
+            
+            if len(parts) == 2:
+                course_id = parts[0].strip()
+                course_title = parts[1].strip()
+            elif len(parts) == 1:
+                course_id = parts[0].strip()
+                course_title = ""
+            
+            # Find prerequisites - look for span containing "Pre-requisites" in the same li
+            prerequisites = None
+            
+            # Navigate up to the parent li element
+            li_parent = h3.find_parent("li")
+            if li_parent:
+                # Look for span containing "Pre-requisites" text
+                prereq_span = li_parent.find("span", string=re.compile(r'Pre-requisites?', re.IGNORECASE))
                 
-                if cleaned_title:
-                    # Split into course_id (first token) and course_title (rest)
-                    parts = cleaned_title.split(" ", 1)
-                    if len(parts) == 2:
-                        course_id = parts[0].strip()
-                        course_title = parts[1].strip()
-                        course_data.append({
-                            "course_id": course_id,
-                            "course_title": course_title
-                        })
-                    elif len(parts) == 1:
-                        # Handle edge case where there's only a course_id
-                        course_data.append({
-                            "course_id": parts[0].strip(),
-                            "course_title": ""
-                        })
+                if prereq_span:
+                    # Get the next sibling text after the span
+                    # This could be direct text or in another element
+                    next_sibling = prereq_span.next_sibling
+                    
+                    # Try to extract text from various possible structures
+                    prereq_text = ""
+                    
+                    # Check if next sibling is text
+                    if next_sibling and isinstance(next_sibling, str):
+                        prereq_text = next_sibling.strip()
+                    # Check if it's in a following element
+                    elif prereq_span.parent:
+                        # Get all text after the span within the parent
+                        parent_text = prereq_span.parent.get_text()
+                        # Split on "Pre-requisites" and take what comes after
+                        if "Pre-requisites" in parent_text or "Pre-requisite" in parent_text:
+                            parts = re.split(r'Pre-requisites?:?\s*', parent_text, flags=re.IGNORECASE)
+                            if len(parts) > 1:
+                                prereq_text = parts[1].strip()
+                                # Clean up - take only until next major section or newline
+                                prereq_text = prereq_text.split('\n')[0].strip()
+                    
+                    if prereq_text:
+                        prerequisites = prereq_text
+            
+            course_data.append({
+                "course_id": course_id,
+                "course_title": course_title,
+                "prerequisites": prerequisites
+            })
         
         return course_data
     except Exception as e:
@@ -281,7 +325,10 @@ if __name__ == "__main__":
                     if course_data:
                         print(f"        📚 Found {len(course_data)} courses:")
                         for course in course_data:
-                            print(f'          • "{course["course_id"]}", "{course["course_title"]}"')
+                            output = f'          • "{course["course_id"]}", "{course["course_title"]}"'
+                            if course["prerequisites"]:
+                                output += f', "{course["prerequisites"]}"'
+                            print(output)
                     else:
                         print(f"        ⚠️  No course titles found on courses page")
                 else:
