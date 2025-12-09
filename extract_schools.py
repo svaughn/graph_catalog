@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.4)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.5)"
 }
 
 def normalize_url(u: str) -> str:
@@ -134,6 +134,30 @@ def find_link(page_url: str, link_text_substring: str) -> str | None:
         print(f"      ⚠️  Error finding '{link_text_substring}' on {page_url}: {e}")
         return None
 
+def extract_course_titles(courses_url: str) -> list[str]:
+    """
+    Fetch the courses page and extract all h3 elements with class="maryann_course_title".
+    Returns a list of course title strings.
+    """
+    html = fetch_html(courses_url)
+    if not html:
+        return []
+    
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Find all h3 elements with class="maryann_course_title"
+        course_titles = []
+        for h3 in soup.find_all("h3", class_="maryann_course_title"):
+            title = h3.get_text(strip=True)
+            if title:
+                course_titles.append(title)
+        
+        return course_titles
+    except Exception as e:
+        print(f"        ⚠️  Error extracting course titles from {courses_url}: {e}")
+        return []
+
 def discover_candidate_school_urls(page_url: str, include_grad: bool = False) -> list[str]:
     """
     Discover candidate top-level School URLs from the entire page (not just sidebar).
@@ -216,6 +240,16 @@ if __name__ == "__main__":
                 courses_link = find_link(nav_link['url'], "Courses")
                 if courses_link:
                     print(f"      ✓ Courses: {courses_link}")
+                    
+                    # 5) Visit the Courses page and extract course titles
+                    course_titles = extract_course_titles(courses_link)
+                    
+                    if course_titles:
+                        print(f"        📚 Found {len(course_titles)} courses:")
+                        for title in course_titles:
+                            print(f"          • {title}")
+                    else:
+                        print(f"        ⚠️  No course titles found on courses page")
                 else:
                     print(f"      ✗ No 'Courses' link found")
 
