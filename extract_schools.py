@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/2.3)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/2.4)"
 }
 
 COURSE_DICT_FILE = "course_dictionary.ser"
@@ -424,10 +424,10 @@ if __name__ == "__main__":
     
     print("\n" + "=" * 80)
     
-    # PHASE 2: Reprocess and identify prerequisite courses
-    print("\n🔍 PHASE 2: Identifying prerequisite relationships...\n")
+    # PHASE 2: Display Program Courses with prerequisite relationships
+    print("\n🔍 PHASE 2: Program Courses and prerequisite relationships...\n")
     print("=" * 80)
-    
+
     current_school = None
     current_program = None
     
@@ -438,14 +438,17 @@ if __name__ == "__main__":
             print(f"\n📚 School: {current_school}")
             print("-" * 80)
         
+        
         # Print program header if changed
         if current_program != course_data["program_name"]:
             current_program = course_data["program_name"]
-            print(f"\n  📄 {current_program}: {course_data['courses_link']}")
+            print(f"\n  📄 Program: {current_program}")
+            print(f"      Courses URL: {course_data['courses_link']}")
+            print(f"\n      📚 Program Courses:")
             print()
         
         # Display course information
-        print(f'    • "{course_data["course_id"]}", "{course_data["course_title"]}"')
+        print(f'        • "{course_data["course_id"]}", "{course_data["course_title"]}"')
         
         # Parse and display prerequisite courses (only if found in dictionary)
         if course_data["prerequisites"]:
@@ -456,9 +459,9 @@ if __name__ == "__main__":
             
             # Only display prerequisites if we found valid courses in the dictionary
             if prereq_courses:
-                print(f"      Prerequisites:")
+                print(f"          Prerequisites:") 
                 for prereq_id in prereq_courses:
                     prereq_title = course_dictionary.get(prereq_id, "Unknown")
-                    print(f'        - "{prereq_id}": "{prereq_title}"')
+                    print(f'            - "{prereq_id}": "{prereq_title}"') 
         
         print()
