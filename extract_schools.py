@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.6)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.7)"
 }
 
 def normalize_url(u: str) -> str:
@@ -140,9 +140,7 @@ def remove_parenthetical(text: str) -> str:
     Handles nested parentheses and cleans up extra whitespace.
     """
     # Remove all parenthetical content (including nested parentheses)
-    # This regex handles nested parentheses by matching the outermost pair
     while '(' in text:
-        # Find and remove the innermost parenthetical first
         text = re.sub(r'\([^()]*\)', '', text)
     
     # Clean up extra whitespace
@@ -150,11 +148,12 @@ def remove_parenthetical(text: str) -> str:
     
     return text
 
-def extract_course_titles(courses_url: str) -> list[str]:
+def extract_course_titles(courses_url: str) -> list[dict]:
     """
     Fetch the courses page and extract all h3 elements with class="maryann_course_title".
-    Removes parenthetical phrases before returning.
-    Returns a list of course title strings.
+    Parses each title into course_id and course_title.
+    Removes parenthetical phrases before parsing.
+    Returns a list of dictionaries, each with 'course_id' and 'course_title' keys.
     """
     html = fetch_html(courses_url)
     if not html:
@@ -164,16 +163,31 @@ def extract_course_titles(courses_url: str) -> list[str]:
         soup = BeautifulSoup(html, "html.parser")
         
         # Find all h3 elements with class="maryann_course_title"
-        course_titles = []
+        course_data = []
         for h3 in soup.find_all("h3", class_="maryann_course_title"):
             title = h3.get_text(strip=True)
             if title:
-                # Remove parenthetical phrases
+                # Remove parenthetical phrases first
                 cleaned_title = remove_parenthetical(title)
-                if cleaned_title:  # Only add if there's content left after cleaning
-                    course_titles.append(cleaned_title)
+                
+                if cleaned_title:
+                    # Split into course_id (first token) and course_title (rest)
+                    parts = cleaned_title.split(" ", 1)
+                    if len(parts) == 2:
+                        course_id = parts[0].strip()
+                        course_title = parts[1].strip()
+                        course_data.append({
+                            "course_id": course_id,
+                            "course_title": course_title
+                        })
+                    elif len(parts) == 1:
+                        # Handle edge case where there's only a course_id
+                        course_data.append({
+                            "course_id": parts[0].strip(),
+                            "course_title": ""
+                        })
         
-        return course_titles
+        return course_data
     except Exception as e:
         print(f"        ⚠️  Error extracting course titles from {courses_url}: {e}")
         return []
@@ -261,13 +275,13 @@ if __name__ == "__main__":
                 if courses_link:
                     print(f"      ✓ Courses: {courses_link}")
                     
-                    # 5) Visit the Courses page and extract course titles
-                    course_titles = extract_course_titles(courses_link)
+                    # 5) Visit the Courses page and extract course data
+                    course_data = extract_course_titles(courses_link)
                     
-                    if course_titles:
-                        print(f"        📚 Found {len(course_titles)} courses:")
-                        for title in course_titles:
-                            print(f"          • {title}")
+                    if course_data:
+                        print(f"        📚 Found {len(course_data)} courses:")
+                        for course in course_data:
+                            print(f'          • "{course["course_id"]}", "{course["course_title"]}"')
                     else:
                         print(f"        ⚠️  No course titles found on courses page")
                 else:
