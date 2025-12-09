@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.8)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.9)"
 }
 
 def normalize_url(u: str) -> str:
@@ -87,14 +87,12 @@ def get_sidebar_ul_links(page_url: str) -> list[dict]:
     sidebar = soup.find("div", id="sidebar")
     
     if not sidebar:
-        print(f"  ⚠️  No div#sidebar found on {page_url}")
         return []
     
     # Find ul within the sidebar
     ul = sidebar.find("ul")
     
     if not ul:
-        print(f"  ⚠️  No <ul> found within div#sidebar on {page_url}")
         return []
     
     # Extract links from li elements
@@ -147,6 +145,35 @@ def remove_parenthetical(text: str) -> str:
     text = re.sub(r'\s+', ' ', text).strip()
     
     return text
+
+def parse_prerequisite_courses(prereq_string: str, course_dict: dict) -> list[str]:
+    """
+    Parse a prerequisite string and extract course IDs that exist in the course dictionary.
+    Returns a list of course IDs that are prerequisites.
+    """
+    if not prereq_string:
+        return []
+    
+    # Extract potential course codes (pattern: DEPT-### or DEPT###)
+    # Common patterns: CHEM-104L, CHEM104, BIOL 201, etc.
+    pattern = r'\b([A-Z]{3,4}[-\s]?\d{3}[A-Z]?)\b'
+    matches = re.findall(pattern, prereq_string.upper())
+    
+    # Normalize the matches and check if they exist in our course dictionary
+    prereq_courses = []
+    for match in matches:
+        # Normalize: remove spaces and hyphens for comparison
+        normalized = match.replace(' ', '').replace('-', '')
+        
+        # Check if this course exists in our dictionary
+        # Try various formats
+        for course_id in course_dict.keys():
+            normalized_dict_id = course_id.replace(' ', '').replace('-', '').upper()
+            if normalized == normalized_dict_id:
+                prereq_courses.append(course_id)
+                break
+    
+    return prereq_courses
 
 def extract_course_titles(courses_url: str) -> list[dict]:
     """
@@ -201,7 +228,6 @@ def extract_course_titles(courses_url: str) -> list[dict]:
                 
                 if prereq_span:
                     # Get the next sibling text after the span
-                    # This could be direct text or in another element
                     next_sibling = prereq_span.next_sibling
                     
                     # Try to extract text from various possible structures
@@ -291,50 +317,76 @@ if __name__ == "__main__":
     print(f"Discovered {len(YOUR_URLS)} candidate school URLs; {len(filtered)} appear in sidebar\n")
     print("=" * 80)
     
-    # 3) For each filtered URL, fetch the page and extract sidebar ul links
+    # PHASE 1: Build course dictionary
+    print("\n🔍 PHASE 1: Building course dictionary...\n")
+    course_dictionary = {}  # course_id -> course_title
+    all_courses_data = []  # Store all course data for phase 2
+    
     for school_url in filtered:
-        print(f"\n📚 School: {school_url}")
-        print("-" * 80)
-        
         sidebar_links = get_sidebar_ul_links(school_url)
         
         if not sidebar_links:
-            print("  No links found in sidebar <ul>")
             continue
         
-        print(f"  Found {len(sidebar_links)} navigation links in sidebar\n")
-        
-        # 4) For each sidebar link, fetch the page and find "Program Requirements" and "Courses" links
         for nav_link in sidebar_links:
-            print(f"  📄 {nav_link['text']}: {nav_link['url']}")
-            
-            # Fetch this page and look for "Program Requirements" link
             prog_req_link = find_link(nav_link['url'], "Program Requirements")
             
             if prog_req_link:
-                print(f"      ✓ Program Requirements: {prog_req_link}")
-
-                # Find "Courses" link on the same page
                 courses_link = find_link(nav_link['url'], "Courses")
                 if courses_link:
-                    print(f"      ✓ Courses: {courses_link}")
-                    
-                    # 5) Visit the Courses page and extract course data
                     course_data = extract_course_titles(courses_link)
                     
-                    if course_data:
-                        print(f"        📚 Found {len(course_data)} courses:")
-                        for course in course_data:
-                            output = f'          • "{course["course_id"]}", "{course["course_title"]}"'
-                            if course["prerequisites"]:
-                                output += f', "{course["prerequisites"]}"'
-                            print(output)
-                    else:
-                        print(f"        ⚠️  No course titles found on courses page")
-                else:
-                    print(f"      ✗ No 'Courses' link found")
-
-            else:
-                print(f"      ✗ No 'Program Requirements' link found")
-            
+                    for course in course_data:
+                        # Add to dictionary (later entries will overwrite if duplicate)
+                        course_dictionary[course["course_id"]] = course["course_title"]
+                        
+                        # Store for phase 2 with additional context
+                        all_courses_data.append({
+                            "school_url": school_url,
+                            "program_name": nav_link['text'],
+                            "courses_link": courses_link,
+                            **course
+                        })
+    
+    print(f"✓ Built course dictionary with {len(course_dictionary)} unique courses\n")
+    print("=" * 80)
+    
+    # PHASE 2: Reprocess and identify prerequisite courses
+    print("\n🔍 PHASE 2: Identifying prerequisite relationships...\n")
+    print("=" * 80)
+    
+    current_school = None
+    current_program = None
+    
+    for course_data in all_courses_data:
+        # Print school header if changed
+        if current_school != course_data["school_url"]:
+            current_school = course_data["school_url"]
+            print(f"\n📚 School: {current_school}")
+            print("-" * 80)
+        
+        # Print program header if changed
+        if current_program != course_data["program_name"]:
+            current_program = course_data["program_name"]
+            print(f"\n  📄 {current_program}: {course_data['courses_link']}")
             print()
+        
+        # Display course information
+        print(f'    • "{course_data["course_id"]}", "{course_data["course_title"]}"')
+        
+        # Parse and display prerequisite courses
+        if course_data["prerequisites"]:
+            prereq_courses = parse_prerequisite_courses(
+                course_data["prerequisites"], 
+                course_dictionary
+            )
+            
+            if prereq_courses:
+                print(f"      Prerequisites:")
+                for prereq_id in prereq_courses:
+                    prereq_title = course_dictionary.get(prereq_id, "Unknown")
+                    print(f'        - "{prereq_id}": "{prereq_title}"')
+            else:
+                print(f'      Prerequisites: (raw) "{course_data["prerequisites"]}"')
+        
+        print()
