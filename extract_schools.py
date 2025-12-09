@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SJF-Sidebar-Filter/1.3)"
+    "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/1.4)"
 }
 
 def normalize_url(u: str) -> str:
@@ -36,14 +36,20 @@ def get_year_root(page_url: str) -> str:
     return f"{p.scheme}://{p.netloc}/{year}/"
 
 def fetch_html(url: str) -> str:
-    r = requests.get(url, headers=HEADERS, timeout=20)
-    r.raise_for_status()
-    time.sleep(0.5)  # Be polite to the server
-    return r.text
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=20)
+        r.raise_for_status()
+        time.sleep(0.5)  # Be polite to the server
+        return r.text
+    except requests.RequestException as e:
+        print(f"      ⚠️  Error fetching {url}: {e}")
+        return None
 
 def get_sidebar_links(page_url: str) -> set[str]:
     """Fetch page_url, parse sidebar navigation, and return absolute normalized hrefs found there."""
     html = fetch_html(page_url)
+    if not html:
+        return set()
     soup = BeautifulSoup(html, "html.parser")
     
     # Try multiple possible sidebar selectors
@@ -73,6 +79,8 @@ def get_sidebar_ul_links(page_url: str) -> list[dict]:
     Returns a list of dicts with 'text' and 'url' keys.
     """
     html = fetch_html(page_url)
+    if not html:
+        return []
     soup = BeautifulSoup(html, "html.parser")
     
     # Find div with id="sidebar"
@@ -103,24 +111,27 @@ def get_sidebar_ul_links(page_url: str) -> list[dict]:
     
     return links
 
-def find_program_requirements_link(page_url: str) -> str | None:
+def find_link(page_url: str, link_text_substring: str) -> str | None:
     """
-    Fetch the page and search for a link with text containing "Program Requirements".
+    Fetch the page and search for a link with text containing the specified substring.
     Returns the absolute URL if found, None otherwise.
     """
+    html = fetch_html(page_url)
+    if not html:
+        return None
+
     try:
-        html = fetch_html(page_url)
         soup = BeautifulSoup(html, "html.parser")
         
-        # Search for links containing "Program Requirements" (case-insensitive)
+        # Search for links containing the specified text (case-insensitive)
         for a in soup.find_all("a", href=True):
             link_text = a.get_text(strip=True)
-            if "program requirements" in link_text.lower():
+            if link_text_substring.lower() in link_text.lower():
                 return urljoin(page_url, a["href"])
         
         return None
     except Exception as e:
-        print(f"      ⚠️  Error fetching {page_url}: {e}")
+        print(f"      ⚠️  Error finding '{link_text_substring}' on {page_url}: {e}")
         return None
 
 def discover_candidate_school_urls(page_url: str, include_grad: bool = False) -> list[str]:
@@ -131,6 +142,8 @@ def discover_candidate_school_urls(page_url: str, include_grad: bool = False) ->
     and ignore deeper paths (program pages).
     """
     html = fetch_html(page_url)
+    if not html:
+        return []
     soup = BeautifulSoup(html, "html.parser")
 
     year_root = get_year_root(page_url)
@@ -189,15 +202,23 @@ if __name__ == "__main__":
         
         print(f"  Found {len(sidebar_links)} navigation links in sidebar\n")
         
-        # 4) For each sidebar link, fetch the page and find "Program Requirements" link
+        # 4) For each sidebar link, fetch the page and find "Program Requirements" and "Courses" links
         for nav_link in sidebar_links:
             print(f"  📄 {nav_link['text']}: {nav_link['url']}")
             
             # Fetch this page and look for "Program Requirements" link
-            prog_req_link = find_program_requirements_link(nav_link['url'])
+            prog_req_link = find_link(nav_link['url'], "Program Requirements")
             
             if prog_req_link:
                 print(f"      ✓ Program Requirements: {prog_req_link}")
+
+                # Find "Courses" link on the same page
+                courses_link = find_link(nav_link['url'], "Courses")
+                if courses_link:
+                    print(f"      ✓ Courses: {courses_link}")
+                else:
+                    print(f"      ✗ No 'Courses' link found")
+
             else:
                 print(f"      ✗ No 'Program Requirements' link found")
             
