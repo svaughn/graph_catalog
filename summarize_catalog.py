@@ -34,6 +34,36 @@ def load_course_dictionary(filename: str = COURSE_DICT_FILE) -> dict:
         print(f"   Please run create_course_dictionary.py first to build the dictionary.")
         sys.exit(1)
 
+def extract_school_name(school_url: str) -> str:
+    """Extract the school name from the school's overview page."""
+    from bs4 import BeautifulSoup
+    
+    html = fetch_html(school_url)
+    if not html:
+        return "Unknown School"
+    
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Try to find the page title or h1 heading
+        h1 = soup.find("h1")
+        if h1:
+            return h1.get_text(strip=True)
+        
+        # Fallback to page title
+        title = soup.find("title")
+        if title:
+            title_text = title.get_text(strip=True)
+            # Remove common suffixes like " | St. John Fisher University"
+            if "|" in title_text:
+                return title_text.split("|")[0].strip()
+            return title_text
+        
+        return "Unknown School"
+    except Exception as e:
+        print(f"      ⚠️  Error extracting school name from {school_url}: {e}")
+        return "Unknown School"
+
 def parse_prerequisite_courses(prereq_string: str, course_dict: dict) -> list[str]:
     """Parse prerequisite string and extract course IDs."""
     if not prereq_string:
@@ -113,32 +143,32 @@ if __name__ == "__main__":
     print(f"Discovered {len(YOUR_URLS)} candidate school URLs; {len(filtered)} appear in sidebar\n")
     print("=" * 80)
     
-    # Collect course data for display
-    print("\nCollecting course data for analysis...\n")
-    all_courses_data = []
+# Collect course data for display
+print("\nCollecting course data for analysis...\n")
+all_courses_data = []
+
+for school_url in filtered:
+    sidebar_links = get_sidebar_ul_links(school_url)
     
-    for school_url in filtered:
-        sidebar_links = get_sidebar_ul_links(school_url)
+    if not sidebar_links:
+        continue
+    
+    for nav_link in sidebar_links:
+        prog_req_link = find_link(nav_link['url'], "Program Requirements")
         
-        if not sidebar_links:
-            continue
-        
-        for nav_link in sidebar_links:
-            prog_req_link = find_link(nav_link['url'], "Program Requirements")
-            
-            if prog_req_link:
-                courses_link = find_link(nav_link['url'], "Courses")
-                if courses_link:
-                    course_data = extract_course_titles(courses_link)
-                    
-                    for course in course_data:
-                        all_courses_data.append({
-                            "school_url": school_url,
-                            "program_name": nav_link['text'],
-                            "prog_req_link": prog_req_link,
-                            "courses_link": courses_link,
-                            **course
-                        })
+        if prog_req_link:
+            courses_link = find_link(nav_link['url'], "Courses")
+            if courses_link:
+                course_data = extract_course_titles(courses_link)
+                
+                for course in course_data:
+                    all_courses_data.append({
+                        "school_url": school_url,
+                        "program_name": nav_link['text'],
+                        "prog_req_link": prog_req_link,
+                        "courses_link": courses_link,
+                        **course
+                    })
     
     print("=" * 80)
     
@@ -153,14 +183,15 @@ if __name__ == "__main__":
         # Print school header if changed
         if current_school != course_data["school_url"]:
             current_school = course_data["school_url"]
-            print(f"\n📚 School: {current_school}")
+            school_name = extract_school_name(current_school)
+            print(f"\n📚 School: {school_name}")
+            print(f"    Overview: {current_school}")
             print("-" * 80)
         
         # Print program header if changed
         if current_program != course_data["program_name"]:
             current_program = course_data["program_name"]
             print(f"\n  📄 Program: {current_program}")
-            print(f"      Program Requirements URL: {course_data.get('prog_req_link', 'Not found')}")
 
             # Extract and display Requirement Courses from Program Requirements page
             prog_req_link = course_data.get('prog_req_link')
@@ -171,13 +202,16 @@ if __name__ == "__main__":
                 )
         
                 if required_courses:
-                    print(f"\n      📋 Requirement Courses ({len(required_courses)}):")
+                    print(f"\n      📋 Program Requirement Courses ({len(required_courses)}) '{prog_req_link}':")
                     for course_id in required_courses:
                         course_title = course_dictionary.get(course_id, "Unknown")
                         print(f'        • "{course_id}": "{course_title}"')
+                else:
+                    print(f"\n      📋 Program Requirement Courses: None found ({prog_req_link})")
+            else:
+                print(f"\n      📋 Program Requirement Courses: Not available")
 
-            print(f"\n      Courses URL: {course_data['courses_link']}")
-            print(f"\n      📚 Program Courses:")
+            print(f"\n      📚 Program Courses '{course_data['courses_link']}':")
             print()
         
         # Display course information
