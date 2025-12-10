@@ -8,12 +8,13 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
+from flow import get_filename
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; SJF-Catalog-Extractor/2.5)"
 }
 
-COURSE_DICT_FILE = "course_dictionary.ser"
+COURSE_DICT_FILE = get_filename(sys.argv[1]) + ".ser"
 
 def normalize_url(u: str) -> str:
     """Normalize URL for reliable comparison (drop query/fragment, unify trailing slash)."""
