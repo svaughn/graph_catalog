@@ -6,22 +6,20 @@ import os
 import json
 from urllib.parse import urlparse
 
-from flow import get_json_filename
-
-
-# Import common functions from create_course_dictionary
-from create_course_dictionary import (
-    COURSE_DICT_FILE,
-    normalize_url,
+from catalog_util import (
+    get_json_filename,
+    get_ser_filename,
     fetch_html,
-    get_sidebar_links,
     get_sidebar_ul_links,
     find_link,
-    remove_parenthetical,
     extract_course_titles,
     discover_candidate_school_urls,
-    filter_urls_by_sidebar
+    filter_urls_by_sidebar    
 )
+
+# Get the serialized filename based on the catalog URL
+CATALOG_PAGE_WITH_SIDEBAR = sys.argv[1]
+COURSE_DICT_FILE = get_ser_filename(CATALOG_PAGE_WITH_SIDEBAR)
 
 def load_course_dictionary(filename: str = COURSE_DICT_FILE) -> dict:
     """Load the course dictionary from a file if it exists."""
