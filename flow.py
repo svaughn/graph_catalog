@@ -114,6 +114,24 @@ def main():
             print("\nError details:")
             print(stderr)
         sys.exit(1)
+
+    # Step 4: Generate PDF (optional)
+    print("=" * 80)
+    print("STEP 4: Generating PDF Summary")
+    print("=" * 80)
+
+    returncode, stdout, stderr = run_command("create_catalog_summary_pdf.py", json_filename)
+
+    if stdout:
+        print(stdout)
+
+    if returncode != 0:
+        print("\n⚠️  Warning: PDF generation failed")
+        if stderr:
+            print(stderr)
+    else:
+        pdf_filename = json_filename.replace('.json', '.pdf')
+        print(f"✓ PDF summary generated: {pdf_filename}\n")
     
     print("\n" + "=" * 80)
     print("✓ WORKFLOW COMPLETED SUCCESSFULLY")
