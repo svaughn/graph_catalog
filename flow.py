@@ -33,7 +33,6 @@ def get_json_filename(catalog_url: str) -> str:
     
     return get_filename(catalog_url) +".json"
 
-
 def get_base_filename(catalog_url: str) -> str:
     """
     Extract the first two path elements from URL to create a base filename.
@@ -64,6 +63,7 @@ def main():
     pdf_filename = f"{base_filename}.pdf"
     dot_filename = f"{base_filename}.dot"
     svg_filename = f"{base_filename}.svg"
+    dependencies_pdf_filename = f"{base_filename}_dependencies.pdf" # New filename
     
     print("=" * 80)
     print("CATALOG ANALYSIS WORKFLOW")
@@ -72,7 +72,8 @@ def main():
     print(f"JSON Output: {json_filename}")
     print(f"PDF Output:  {pdf_filename}")
     print(f"DOT Output:  {dot_filename}")
-    print(f"SVG Output:  {svg_filename}\n")
+    print(f"SVG Output:  {svg_filename}")
+    print(f"Deps PDF:    {dependencies_pdf_filename}\n") # New output listed
     
     # Step 1: Create/load course dictionary
     print("=" * 80)
@@ -135,13 +136,24 @@ def main():
     print("=" * 80)
     returncode, stdout, stderr = run_command(["dot", "-Tsvg", dot_filename, "-o", svg_filename])
     if stdout: print(stdout)
-    if returncode == -1: # Specific code for FileNotFoundError
+    if returncode == -1:
         print(f"\n⚠️  WARNING: Graphviz 'dot' command not found. Skipping SVG generation.")
         print("   To install it, run: 'sudo apt-get install graphviz' or 'brew install graphviz'")
     elif returncode != 0:
         print(f"\n⚠️  WARNING: SVG generation failed.\n{stderr}")
     else:
         print(f"✓ SVG graph generated: {svg_filename}\n")
+
+    # Step 7: Generate Course Dependency PDF (NEW STEP)
+    print("=" * 80)
+    print("STEP 7: Generating Course Dependency PDF")
+    print("=" * 80)
+    returncode, stdout, stderr = run_command(["python3", "get_dependencies_pdf.py", json_filename])
+    if stdout: print(stdout)
+    if returncode != 0:
+        print(f"\n⚠️  Warning: Dependency PDF generation failed.\n{stderr}")
+    else:
+        print(f"✓ Dependency PDF generated: {dependencies_pdf_filename}\n")
 
     print("\n" + "=" * 80)
     print("✓ WORKFLOW COMPLETED")
@@ -152,6 +164,7 @@ def main():
     print(f"  • {pdf_filename} (if successful)")
     print(f"  • {dot_filename}")
     print(f"  • {svg_filename} (if Graphviz is installed and successful)")
+    print(f"  • {dependencies_pdf_filename} (if successful)") # New file listed
 
 if __name__ == "__main__":
     main()
