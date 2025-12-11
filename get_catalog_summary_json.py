@@ -144,7 +144,7 @@ if __name__ == "__main__":
     course_dictionary = load_course_dictionary()
     
     # Discover and filter school URLs
-    YOUR_URLS = discover_candidate_school_urls(CATALOG_PAGE_WITH_SIDEBAR, include_grad=False)
+    YOUR_URLS = discover_candidate_school_urls(CATALOG_PAGE_WITH_SIDEBAR)
     
     try:
         filtered = filter_urls_by_sidebar(CATALOG_PAGE_WITH_SIDEBAR, YOUR_URLS)

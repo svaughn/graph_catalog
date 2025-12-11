@@ -187,7 +187,7 @@ def extract_course_titles(courses_url: str) -> list[dict]:
         print(f"        ⚠️  Error extracting course titles from {courses_url}: {e}")
         return []
     
-def discover_candidate_school_urls(page_url: str, include_grad: bool = False) -> list[str]:
+def discover_candidate_school_urls(page_url: str) -> list[str]:
     """Discover candidate top-level School URLs."""
     html = fetch_html(page_url)
     if not html:
@@ -195,10 +195,6 @@ def discover_candidate_school_urls(page_url: str, include_grad: bool = False) ->
     soup = BeautifulSoup(html, "html.parser")
 
     year_root = get_year_root(page_url)
-    pattern = r"/(?:undergraduate"
-    if include_grad:
-        pattern += r"|graduate"
-    pattern += r")/([^/]+)/?$"
 
     candidates = set()
     for a in soup.find_all("a", href=True):
@@ -206,8 +202,7 @@ def discover_candidate_school_urls(page_url: str, include_grad: bool = False) ->
         if not abs_url.startswith(year_root):
             continue
         path = urlparse(abs_url).path
-        if re.search(pattern, path):
-            candidates.add(normalize_url(abs_url))
+        candidates.add(normalize_url(abs_url))
 
     return sorted(candidates)
 
@@ -237,31 +232,33 @@ def normalize_url(u: str) -> str:
             path = path + "/"
     return urlunparse((scheme, netloc, path, "", "", ""))
 
-
-
-def get_sidebar_links(page_url: str) -> set[str]:
-    """Fetch page_url, parse sidebar navigation, and return absolute normalized hrefs found there."""
+def get_sidebar_links(page_url: str, debug: bool = False) -> set[str]:
     html = fetch_html(page_url)
     if not html:
         return set()
-    soup = BeautifulSoup(html, "html.parser")
     
-    sidebar = (
-        soup.find("div", id="sidebar") or
-        soup.find("nav", id="sidebar") or
-        soup.find("aside", id="sidebar") or
-        soup.find("div", class_="sidebar") or
-        soup.find("nav", class_="sidebar") or
-        soup.find("div", {"role": "navigation"})
-    )
+    soup = BeautifulSoup(html, "html.parser")
+    sidebar = soup.find("div", id="sidebar")
     
     if not sidebar:
+        if debug:
+            print("⚠️  No sidebar found!")
         return set()
+    
+    if debug:
+        print(f"✓ Sidebar found, scanning for links...")
     
     links = set()
     for a in sidebar.find_all("a", href=True):
-        abs_url = urljoin(page_url, a["href"])
-        links.add(normalize_url(abs_url))
+        link_text = a.get_text(strip=True)
+        if debug:
+            print(f"  Found link: '{link_text}'")
+        
+        if 'school' in link_text.lower():
+            abs_url = urljoin(page_url, a["href"])
+            links.add(normalize_url(abs_url))
+            if debug:
+                print(f"    ✓ Matched! Added: {abs_url}")
     
     return links
 

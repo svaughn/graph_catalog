@@ -8,14 +8,12 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse
 from catalog_util import (
     get_ser_filename,
-    fetch_html,
     get_sidebar_ul_links,
     find_link,
     extract_course_titles,
     discover_candidate_school_urls,
     filter_urls_by_sidebar,
 )
-
 
 def save_course_dictionary(course_dict: dict, filename: str):
     """Save the course dictionary to a file using pickle serialization."""
@@ -64,7 +62,7 @@ if __name__ == "__main__":
         print("Building course dictionary from catalog...\n")
         
         # Discover and filter school URLs
-        YOUR_URLS = discover_candidate_school_urls(CATALOG_PAGE_WITH_SIDEBAR, include_grad=False)
+        YOUR_URLS = discover_candidate_school_urls(CATALOG_PAGE_WITH_SIDEBAR)
         
         try:
             filtered = filter_urls_by_sidebar(CATALOG_PAGE_WITH_SIDEBAR, YOUR_URLS)
