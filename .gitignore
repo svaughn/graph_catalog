@@ -1,2 +1,14 @@
-__pycache__
+# Environment variables
 .env
+
+
+# virtual environment
+venv
+
+# exports
+ethos_exports
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
